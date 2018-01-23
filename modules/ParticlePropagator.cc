@@ -132,7 +132,7 @@ void ParticlePropagator::Process()
   Double_t t_z, t_r, t_ra, t_rb;
   Double_t tmp, discr, discr2;
   Double_t delta, gammam, omega, asinrho;
-  Double_t rcu, rc2, xd, yd, zd;
+  Double_t rcu, xd, yd, zd;
   Double_t l, d0, dz, p, ctgTheta, phip, etap, alpha;
   Double_t bsx, bsy, bsz;
 
@@ -274,18 +274,15 @@ void ParticlePropagator::Process()
       phi = phi_c;
       if(x_c < 0.0) phi += TMath::Pi();
 
-      rcu = TMath::Abs(r);
-      rc2 = r_c*r_c;
+      rcu = TMath::Abs(r)/r_c;
 
       // calculate coordinates of closest approach to track circle in transverse plane xd, yd, zd
-      xd = x_c*x_c*x_c - x_c*rcu*r_c + x_c*y_c*y_c;
-      xd = (rc2 > 0.0) ? xd / rc2 : -999;
-      yd = y_c*(-rcu*r_c + rc2);
-      yd = (rc2 > 0.0) ? yd / rc2 : -999;
-      zd = z + (TMath::Sqrt(xd*xd + yd*yd) - TMath::Sqrt(x*x + y*y))*pz/pt;
+      xd = (r_c > 0.0) ? x_c*(1-rcu) : -999;
+      yd = (r_c > 0.0) ? y_c*(1-rcu) : -999;
+      zd = z + (TMath::Hypot(xd, yd) - TMath::Hypot(x, y))*pz/pt;
 
       // use perigee momentum rather than original particle
-      // momentum, since the orignal particle momentum isn't known
+      // momentum, since the original particle momentum isn't known
 
       px = TMath::Sign(1.0, r) * pt * (-y_c / r_c);
       py = TMath::Sign(1.0, r) * pt * (x_c / r_c);
