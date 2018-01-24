@@ -381,7 +381,7 @@ void TreeWriter::ProcessTracks(ExRootTreeBranch *branch, TObjArray *array)
     entry->CtgTheta = ctgTheta;
 
     particle = static_cast<Candidate*>(candidate->GetCandidates()->At(0));
-    const TLorentzVector &initialPosition = particle->Position;
+    const TLorentzVector &initialPosition = candidate->InitialPosition;
 
     entry->X = initialPosition.X();
     entry->Y = initialPosition.Y();
