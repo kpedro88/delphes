@@ -30,6 +30,7 @@
 #include <stdexcept>
 #include <iostream>
 #include <sstream>
+#include <utility>
 
 using namespace std;
 
@@ -158,10 +159,12 @@ void TrackSmearing::Process()
   TLorentzVector beamSpotPosition;
   Candidate *candidate, *mother;
   Double_t pt, eta, d0, d0Error, trueD0, dz, dzError, trueDZ, p, pError, trueP, ctgTheta, ctgThetaError, trueCtgTheta, phi, phiError, truePhi;
+  Double_t op, ophi, opx, opy, opt;
   Double_t x, y, z, t, px, py, pz, theta;
-  Double_t q, r;
-  Double_t x_c, y_c, r_c, phi_0;
-  Double_t rcu, rc2, xd, yd, zd;
+  Double_t q, r, phi_0;
+  Double_t xd, yd, zd, delta;
+  Double_t bsx, bsy, bsz;
+  Int_t sign;
   const Double_t c_light = 2.99792458E8;
   TProfile2D *d0ErrorHist = NULL,
              *dzErrorHist = NULL,
@@ -219,6 +222,7 @@ void TrackSmearing::Process()
    
     const TLorentzVector &momentum = candidate->Momentum;
     const TLorentzVector &position = candidate->InitialPosition;
+    const TLorentzVector &omomentum = candidate->OriginalMomentum;
    
     pt = momentum.Pt();
     eta = momentum.Eta();
@@ -229,6 +233,24 @@ void TrackSmearing::Process()
     p = trueP = candidate->P;
     ctgTheta = trueCtgTheta = candidate->CtgTheta;
     phi = truePhi = candidate->Phi;
+    
+    op = omomentum.P();
+    opx = omomentum.Px();
+    opy = omomentum.Py();
+    opt = omomentum.Pt();
+    ophi = TMath::ATan2(opy, opx);
+
+    q = candidate->Charge;
+    r = opt / (q * fBz) * 1.0E9/c_light;        // in [m]
+    phi_0 = TMath::ATan2(opy, opx); // [rad] in [-pi, pi]
+    // check which solution for (xd,yd)->(x,y) to use, before smearing
+    xd = candidate->Xd*1.0E-3;
+    yd = candidate->Yd*1.0E-3;
+    x = position.X ()*1.0E-3;
+    y = position.Y ()*1.0E-3;
+    sign = 1;
+    auto sol = solvePos(xd,yd,r,phi_0,sign);
+    if(TMath::Abs(x-sol.first)>0.0001) sign = -1;
 
     if (fUseD0Formula)
       d0Error = fD0Formula->Eval(pt, eta);
@@ -331,61 +353,60 @@ void TrackSmearing::Process()
     candidate->CtgTheta = ctgTheta;
     candidate->Phi = phi;
 
+    // propagate smearing to both original and perigee momentum
     theta = TMath::ACos(ctgTheta / TMath::Sqrt (1.0 + ctgTheta * ctgTheta));
+    ophi = ophi + (phi - truePhi);
+    while (ophi > TMath::Pi ()) ophi -= TMath::TwoPi ();
+    while (ophi <= -TMath::Pi ()) ophi += TMath::TwoPi ();
+    op = op + (p - trueP);
+    candidate->OriginalMomentum.SetPx (op * TMath::Cos (ophi) * TMath::Sin (theta));
+    candidate->OriginalMomentum.SetPy (op * TMath::Sin (ophi) * TMath::Sin (theta));
+    candidate->OriginalMomentum.SetPz (op * TMath::Cos (theta));
+    candidate->OriginalMomentum.SetE (candidate->OriginalMomentum.Pt () * TMath::CosH (eta));
     candidate->Momentum.SetPx (p * TMath::Cos (phi) * TMath::Sin (theta));
     candidate->Momentum.SetPy (p * TMath::Sin (phi) * TMath::Sin (theta));
     candidate->Momentum.SetPz (p * TMath::Cos (theta));
     candidate->Momentum.SetE (candidate->Momentum.Pt () * TMath::CosH (eta));
     candidate->PT = candidate->Momentum.Pt ();
 
-    x = position.X ();
-    y = position.Y ();
-    z = position.Z ();
-    t = position.T ();
+    bsx = beamSpotPosition.X()*1.0E-3;
+    bsy = beamSpotPosition.Y()*1.0E-3;
+    bsz = beamSpotPosition.Z()*1.0E-3;
+
+    xd = candidate->Xd*1.0E-3;
+    yd = candidate->Yd*1.0E-3;
+    zd = candidate->Zd*1.0E-3;
     px = candidate->Momentum.Px ();
     py = candidate->Momentum.Py ();
     pz = candidate->Momentum.Pz ();
     pt = candidate->Momentum.Pt ();
+    opx = candidate->OriginalMomentum.Px ();
+    opy = candidate->OriginalMomentum.Py ();
+    opt = candidate->OriginalMomentum.Pt ();
     
-    // -- solve for delta: d0' = ( (x+delta)*py' - (y+delta)*px' )/pt'
-    
-    candidate->InitialPosition.SetX (x + ((px * y - py * x + d0 * pt) / (py - px)));
-    candidate->InitialPosition.SetY (y + ((px * y - py * x + d0 * pt) / (py - px)));
-    x = candidate->InitialPosition.X ();
-    y = candidate->InitialPosition.Y ();
-    candidate->InitialPosition.SetZ (z + ((pz * (px * (x - beamSpotPosition.X ()) + py * (y - beamSpotPosition.Y ())) + pt * pt * (dz - z)) / (pt * pt)));
-    z = candidate->InitialPosition.Z ();
+    // -- solve for delta: d0' = ( (xd+delta-bsx)*py' - (yd+delta-bsy)*px' )/pt'
+    delta = (d0*1.0E-3 * pt - (xd - bsx)*py + (yd - bsy)*px)/(py - px);
+    candidate->Xd = (xd + delta)*1.0E3;
+    candidate->Yd = (yd + delta)*1.0E3;
+    xd = candidate->Xd*1.0E-3;
+    yd = candidate->Yd*1.0E-3;
+    // -- solve for delta: dz' = zd + delta - (...)
+    candidate->Zd = (dz*1.0E-3 + ((xd - bsx) * px + (yd - bsy) * py) / pt * (pz / pt))*1.0E3;
+    zd = candidate->Zd*1.0E-3;
 
-    candidate->InitialPosition.SetT(t);
+    // update initial position correspondingly (use original momentum)
+    r = opt / (q * fBz) * 1.0E9/c_light;
+    phi_0 = TMath::ATan2(opy, opx);
+    sol = solvePos(xd,yd,r,phi_0,sign);
+    x = sol.first;
+    y = sol.second;
+    z = zd - (TMath::Hypot(xd, yd) - TMath::Hypot(x, y))*pz/pt;
+    t = position.T ();
 
-    // update closest approach
-    x *= 1.0E-3;
-    y *= 1.0E-3;
-    z *= 1.0E-3;
-
-    q = candidate->Charge;
-
-    r = pt / (q * fBz) * 1.0E9/c_light;        // in [m]
-    phi_0 = TMath::ATan2(py, px); // [rad] in [-pi, pi]
-
-    // 2. helix axis coordinates
-    x_c = x + r*TMath::Sin(phi_0);
-    y_c = y - r*TMath::Cos(phi_0);
-    r_c = TMath::Hypot(x_c, y_c);
-
-    rcu = TMath::Abs(r);
-    rc2 = r_c*r_c;
-
-    // calculate coordinates of closest approach to track circle in transverse plane xd, yd, zd
-    xd = x_c*x_c*x_c - x_c*rcu*r_c + x_c*y_c*y_c;
-    xd = (rc2 > 0.0) ? xd / rc2 : -999;
-    yd = y_c*(-rcu*r_c + rc2);
-    yd = (rc2 > 0.0) ? yd / rc2 : -999;
-    zd = z + (TMath::Sqrt(xd*xd + yd*yd) - TMath::Sqrt(x*x + y*y))*pz/pt;
-
-    candidate->Xd = xd*1.0E3;
-    candidate->Yd = yd*1.0E3;
-    candidate->Zd = zd*1.0E3;
+    candidate->InitialPosition.SetX (x*1.0E3);
+    candidate->InitialPosition.SetY (y*1.0E3);
+    candidate->InitialPosition.SetZ (z*1.0E3);
+    candidate->InitialPosition.SetT (t);
 
     if (fApplyToPileUp || !candidate->IsPU)
     {
@@ -405,12 +426,21 @@ void TrackSmearing::Process()
   }
 }
 
-Double_t TrackSmearing::ptError (const Double_t p, const Double_t ctgTheta, const Double_t dP, const Double_t dCtgTheta)
+Double_t TrackSmearing::ptError (const Double_t p, const Double_t ctgTheta, const Double_t dP, const Double_t dCtgTheta) const
 {
   Double_t a, b;
   a = (p * p * ctgTheta * ctgTheta * dCtgTheta * dCtgTheta) / ((ctgTheta * ctgTheta + 1) * (ctgTheta * ctgTheta + 1) * (ctgTheta * ctgTheta + 1));
   b = (dP * dP) / (ctgTheta * ctgTheta + 1);
   return sqrt (a + b);
+}
+
+std::pair<Double_t,Double_t> TrackSmearing::solvePos(Double_t xd, Double_t yd, Double_t r, Double_t phi_0, Int_t sign) const
+{
+  sign = TMath::Sign(1.0,sign);
+  Double_t rd = TMath::Hypot(xd,yd);
+  Double_t x = (xd - r*TMath::Sin(phi_0))+sign*xd*TMath::Abs(r)/rd;
+  Double_t y = (yd + r*TMath::Cos(phi_0))+sign*yd*TMath::Abs(r)/rd;
+  return std::make_pair(x,y);
 }
 
 //------------------------------------------------------------------------------

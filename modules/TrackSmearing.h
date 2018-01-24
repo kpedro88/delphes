@@ -30,7 +30,8 @@ public:
 
 private:
 
-  Double_t ptError (const Double_t, const Double_t, const Double_t, const Double_t);
+  Double_t ptError (const Double_t, const Double_t, const Double_t, const Double_t) const;
+  std::pair<Double_t,Double_t> solvePos(Double_t xd, Double_t yd, Double_t r, Double_t phi_0, Int_t sign) const;
 
   Double_t fBz;
 
