@@ -279,6 +279,7 @@ void Candidate::Copy(TObject &obj) const
   object.DeltaEta = DeltaEta;
   object.DeltaPhi = DeltaPhi;
   object.Momentum = Momentum;
+  object.OriginalMomentum = OriginalMomentum;
   object.Position = Position;
   object.InitialPosition = InitialPosition;
   object.PositionError = PositionError;

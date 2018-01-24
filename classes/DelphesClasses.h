@@ -559,7 +559,7 @@ public:
   Float_t DeltaEta;
   Float_t DeltaPhi;
 
-  TLorentzVector Momentum, Position, InitialPosition, PositionError, Area;
+  TLorentzVector Momentum, Position, InitialPosition, PositionError, Area, OriginalMomentum;
 
   Float_t L; // path length
   Float_t ErrorT; // path length
