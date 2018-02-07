@@ -296,8 +296,8 @@ void ParticlePropagator::Process()
 
       // calculate additional track parameters (correct for beamspot position)
 
-      d0        = ((x - bsx) * py - (y - bsy) * px) / pt;
-      dz        = z - ((x - bsx) * px + (y - bsy) * py) / pt * (pz / pt);
+      d0        = ((xd - bsx) * py - (yd - bsy) * px) / pt;
+      dz        = zd - ((xd - bsx) * px + (yd - bsy) * py) / pt * (pz / pt);
       p         = candidateMomentum.P();
       ctgTheta  = 1.0 / TMath::Tan (candidateMomentum.Theta());
 
