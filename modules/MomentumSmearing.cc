@@ -122,6 +122,8 @@ void MomentumSmearing::Process()
     eta = candidateMomentum.Eta();
     phi = candidateMomentum.Phi();
     candidate->Momentum.SetPtEtaPhiE(pt, eta, phi, pt*TMath::CosH(eta));
+    candidate->PT = pt;
+    candidate->P = candidate->Momentum.P();
     //candidate->TrackResolution = fFormula->Eval(pt, eta, phi, e);
     candidate->TrackResolution = res;
     candidate->AddCandidate(mother);
